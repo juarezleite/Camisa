@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Camiseta Interativa</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: #f3f4f6; color: #1f2937; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+    .card { background: #ffffff; width: 100%; max-width: 400px; border-radius: 16px; padding: 30px 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); text-align: center; }
+    .badge { display: inline-block; background: #e0e7ff; color: #3730a3; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 99px; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px; }
+    h1 { font-size: 22px; margin-bottom: 12px; color: #111827; }
+    p { font-size: 15px; line-height: 1.5; color: #4b5563; margin-bottom: 24px; }
+    .btn { display: block; width: 100%; padding: 14px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 15px; margin-bottom: 12px; transition: opacity 0.2s; }
+    .btn:active { opacity: 0.8; }
+    .btn-whats { background-color: #16a34a; color: #ffffff; }
+    .btn-insta { background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); color: #ffffff; }
+    .loader { border: 4px solid #e5e7eb; border-top: 4px solid #2563eb; border-radius: 50%; width: 36px; height: 36px; animation: spin 1s linear infinite; margin: 0 auto 16px; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .footer { margin-top: 20px; font-size: 12px; color: #9ca3af; }
+  </style>
+</head>
+<body>
+
+  <div class="card" id="conteudo">
+    <div class="loader"></div>
+    <p style="margin-bottom: 0;">Carregando informações...</p>
+  </div>
+
+  <script>
+    const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQs3R4FoxYt8p1Vila0ECZNR_TlfP3eGWOLw2aI8wyNjymzoRG2lz5i7ZKwUHib3saeHvLcYbZQdeNs/pub?gid=0&single=true&output=csv';
+
+    function parseCSV(texto) {
+      const linhas = [];
+      let linhaAtual = [];
+      let celula = '';
+      let dentroAspas = false;
+
+      for (let i = 0; i < texto.length; i++) {
+        const char = texto[i];
+        const proxChar = texto[i + 1];
+
+        if (char === '"' && dentroAspas && proxChar === '"') {
+          celula += '"';
+          i++;
+        } else if (char === '"') {
+          dentroAspas = !dentroAspas;
+        } else if (char === ',' && !dentroAspas) {
+          linhaAtual.push(celula.trim());
+          celula = '';
+        } else if ((char === '\n' || char === '\r') && !dentroAspas) {
+          if (char === '\r' && proxChar === '\n') i++;
+          linhaAtual.push(celula.trim());
+          if (linhaAtual.some(c => c !== '')) linhas.push(linhaAtual);
+          linhaAtual = [];
+          celula = '';
+        } else {
+          celula += char;
+        }
+      }
+      if (celula || linhaAtual.length) {
+        linhaAtual.push(celula.trim());
+        linhas.push(linhaAtual);
+      }
+      return linhas;
+    }
+
+    function normalizarId(valor) {
+      if (!valor) return '';
+      const limpo = valor.trim();
+      return /^\d+$/.test(limpo) ? String(Number(limpo)) : limpo.toLowerCase();
+    }
+
+    async function iniciar() {
+      const card = document.getElementById('conteudo');
+      const params = new URLSearchParams(window.location.search);
+      const idParam = params.get('id');
+
+      if (!idParam) {
+        card.innerHTML = '<h1>Código Inválido</h1><p>Nenhum identificador foi encontrado nesta leitura.</p>';
+        return;
+      }
+
+      const idBuscado = normalizarId(idParam);
+
+      try {
+        const urlSemCache = CSV_URL + '&t=' + Date.now();
+        const resposta = await fetch(urlSemCache);
+        const texto = await resposta.text();
+        const linhas = parseCSV(texto).slice(1);
+
+        const registro = linhas.find(col => normalizarId(col) === idBuscado);
+
+        if (!registro) {
+          card.innerHTML = '<h1>Peça Não Ativada</h1><p>O código <strong>' + idParam + '</strong> ainda não foi configurado.</p>';
+          return;
+        }
+
+        const [id, linkDireto, titulo, mensagem, whatsapp, instagram] = registro;
+
+        if (linkDireto && linkDireto.startsWith('http')) {
+          window.location.replace(linkDireto);
+          return;
+        }
+
+        let html = '<span class="badge">ID #' + id + '</span>';
+        html += '<h1>' + (titulo || 'Camiseta Conectada') + '</h1>';
+        if (mensagem) html += '<p>' + mensagem + '</p>';
+
+        if (whatsapp) {
+          const numLimpo = whatsapp.replace(/\D/g, '');
+          html += '<a class="btn btn-whats" href="https://wa.me' + numLimpo + '" target="_blank">Chamar no WhatsApp</a>';
+        }
+
+        if (instagram) {
+          const userLimpo = instagram.replace('@', '').trim();
+          html += '<a class="btn btn-insta" href="https://instagram.com' + userLimpo + '" target="_blank">Ver Instagram</a>';
+        }
+
+        if (!whatsapp && !instagram && !mensagem) {
+          html += '<p>Nenhum contato cadastrado para esta peça no momento.</p>';
+        }
+
+        html += '<div class="footer">Tecnologia NFC + QR Code</div>';
+        card.innerHTML = html;
+
+      } catch (erro) {
+        card.innerHTML = '<h1>Erro de Conexão</h1><p>Não foi possível carregar os dados. Tente novamente em instantes.</p>';
+      }
+    }
+
+    iniciar();
+  </script>
+</body>
+</html>
